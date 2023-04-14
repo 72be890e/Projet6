@@ -38,42 +38,32 @@ const userLogin = async (req, res) => {
     } = req.body;
 
     try {
-        User.findOne({
-                email
-            })
-            .then((user) => {
-                if (!user) {
-                    return res.status(401).json({
-                        error: "utilisateur inconnu"
-                    })
-                }
+        const user = await User.findOne({
+            email
+        });
+        if (!user) {
+            return res.status(401).json({
+                error: "utilisateur inconnu"
+            });
+        }
 
-                bcrypt.compare(password, user.password)
-                    .then((valid) => {
-                        if (!valid) return res.status(401).json({
-                            error: "mot de passe incorrect"
-                        })
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) {
+            return res.status(401).json({
+                error: "mot de passe incorrect"
+            });
+        }
 
-                        res.status(200).json({
-                            userId: user._id,
-                            token: jwt.sign({
-                                userId: user._id
-                            }, process.env.JWT_SECRET, {
-                                expiresIn: "24h"
-                            })
-                        })
-                    }).catch((error) => {
-                        console.log("user.login => bcrypt compare:", error)
-                        return res.status(500).json({
-                            error
-                        })
-                    });
-            }).catch((error) => {
-                console.log("user.login => database find:", error)
-                return res.status(500).json({
-                    error
-                })
-            })
+        const token = jwt.sign({
+            userId: user._id
+        }, process.env.JWT_SECRET, {
+            expiresIn: "24h"
+        });
+        
+        res.status(200).json({
+            userId: user._id,
+            token
+        });
     } catch (error) {
         console.log("user.signup => error occured:", error.message)
 
