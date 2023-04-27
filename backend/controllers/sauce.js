@@ -1,4 +1,5 @@
 const Sauce = require("../models/sauce");
+const fs = require("fs")
 
 const Actions = {
     Liked: 1,
@@ -7,7 +8,35 @@ const Actions = {
 }
 
 // Helper function related to the likeSauce function
-async function handleLike(userId, sauceId) {
+async function handleLike(userId, sauceId, sauce) {
+    if (sauce.usersLiked.includes(userId)) {
+        return Sauce.updateOne({
+            _id: sauceId
+        }, {
+            $inc: {
+                likes: -1,
+            },
+            $pull: {
+                usersLiked: userId
+            }
+        })
+    }
+    if (sauce.usersDisliked.includes(userId)) {
+        return Sauce.updateOne({
+            _id: sauceId
+        }, {
+            $inc: {
+                dislikes: -1,
+                likes: 1
+            },
+            $push: {
+                usersLiked: userId
+            },
+            $pull: {
+                usersDisliked: userId
+            }
+        })
+    }
     return Sauce.updateOne({
         _id: sauceId
     }, {
@@ -21,7 +50,35 @@ async function handleLike(userId, sauceId) {
 }
 
 // Helper function related to the likeSauce function
-async function handleDislike(userId, sauceId) {
+async function handleDislike(userId, sauceId, sauce) {
+    if (sauce.usersDisliked.includes(userId)) {
+        return Sauce.updateOne({
+            _id: sauceId
+        }, {
+            $inc: {
+                dislikes: -1,
+            },
+            $pull: {
+                usersDisliked: userId
+            }
+        })
+    }
+    if (sauce.usersLiked.includes(userId)) {
+        return Sauce.updateOne({
+            _id: sauceId
+        }, {
+            $inc: {
+                dislikes: 1,
+                likes: -1
+            },
+            $push: {
+                usersDisliked: userId
+            },
+            $pull: {
+                usersLiked: userId
+            }
+        })
+    }
     return Sauce.updateOne({
         _id: sauceId
     }, {
@@ -29,7 +86,7 @@ async function handleDislike(userId, sauceId) {
             dislikes: 1
         },
         $push: {
-            usersLiked: userId
+            usersDisliked: userId
         },
     })
 }
@@ -41,7 +98,7 @@ const newSauce = async (req, res) => {
         delete sauceObj._id;
         const sauce = new Sauce({
             ...sauceObj,
-            imageUrl: `${req.protocol}://${req.hostname}/images/${req.file.filename}`,
+            imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`,
             likes: 0,
             dislikes: 0,
             usersLiked: [],
@@ -72,9 +129,15 @@ const getAllSauces = async (req, res) => {
 
 const getSingleSauce = async (req, res) => {
     try {
-        const sauce = await Sauce.findOne({
+        var sauce = await Sauce.findOne({
             _id: req.params.id
-        });
+        })
+        if (!sauce) {
+            // didnt found sauce
+            return res.status(404).json({
+                error: "Cette sauce n'existe pas"
+            })
+        }
         res.status(200).json(sauce);
     } catch (error) {
         res.status(400).json({
@@ -83,8 +146,82 @@ const getSingleSauce = async (req, res) => {
     }
 }
 
-const deleteSauce = async (req, res) => {}
-const updateSauce = async (req, res) => {}
+const deleteSauce = async (req, res) => {
+    try {
+        var sauce = await Sauce.findOne({
+            _id: req.params.id
+        })
+        if (!sauce) {
+            // didnt found sauce
+            return res.status(404).json({
+                error: "Cette sauce n'existe pas"
+            })
+        }
+        // Logged in user is the sauce uploader
+        if (sauce.userId != req.auth.userId) {
+            return res.status(401).json({
+                error: "Pas authorisé"
+            });
+        }
+
+        // delete image
+        let path = "images/" + sauce.imageUrl.split("/images/")[1]
+        fs.unlink(path, async () => {
+            try {
+                await Sauce.deleteOne({
+                    _id: req.params.id
+                })
+                return res.status(200).json({
+                    message: 'Objet supprimé !'
+                });
+            } catch (error) {
+                res.status(400).json({
+                    error
+                });
+            }
+        })
+    } catch (error) {
+        console.log("[ERROR] deleteSauce => ",error)
+        res.status(400).json({
+            error
+        });
+    }
+}
+
+const updateSauce = async (req, res) => {
+    try {
+        var oldSauce = req.file ? {
+            ...JSON.parse(req.body.sauce),
+            imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`
+        } : {
+            ...req.body
+        };
+
+        var sauce = await Sauce.findOne({
+            _id: req.params.id
+        })
+        if (!sauce) {
+            // didnt found sauce
+            return res.status(404).json({
+                error: "Cette sauce n'existe pas"
+            })
+        }
+
+        // Logged in user is the sauce uploader
+        if (sauce.userId != req.auth.userId) {
+            return res.status(401).json({
+                message: "Pas authorisé"
+            });
+        }
+
+        await Sauce.updateOne({ _id: req.params.id}, { ...oldSauce, _id: req.params.id});
+        res.status(200).json({message:"Sauce mise a jour"});
+    } catch (error) {
+        res.status(400).json({
+            error
+        });
+    }
+}
 
 const likeSauce = async (req, res) => {
     try {
@@ -92,28 +229,30 @@ const likeSauce = async (req, res) => {
             like,
             userId
         } = req.body
+
         //TODO:  regular like behavior
+        var sauce = await Sauce.findOne({
+            _id: req.params.id
+        })
+        if (!sauce) {
+            // didnt found sauce
+            return res.status(404).json({
+                error: "Cette sauce n'existe pas"
+            })
+        }
+
         switch (like) {
             case Actions.Liked:
-                await handleLike(userId, req.params.id);
+                await handleLike(userId, req.params.id, sauce);
                 return res.status(200).json({
                     message: "Sauce likée"
                 })
             case Actions.Disliked:
-                await handleDislike(userId, req.params.id);
+                await handleDislike(userId, req.params.id, sauce);
                 return res.status(200).json({
                     message: "Sauce dislikée"
                 })
             case Actions.Canceled:
-                var sauce = await Sauce.findOne({
-                    _id: req.params.id
-                })
-                if (!sauce) {
-                    // didnt found sauce
-                    return res.status(404).json({
-                        error: "Cette sauce n'existe pas"
-                    })
-                }
                 console.log(sauce)
                 // user previously liked the sauce
                 if (sauce.usersLiked.includes(userId)) {

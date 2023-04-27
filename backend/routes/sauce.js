@@ -4,14 +4,13 @@ const authMiddleware = require("../middlewares/auth")
 const controller = require("../controllers/sauce")
 const multerMiddleware = require("../middlewares/multer");
 
-
-router.use(authMiddleware)
+//router.use(authMiddleware)
 router.get("/", controller.getAllSauces)
-router.post("/", multerMiddleware, controller.newSauce)
+router.post("/", authMiddleware, multerMiddleware, controller.newSauce)
 router.get("/:id", controller.getSingleSauce)
-router.put("/:id", multerMiddleware, controller.updateSauce)
-router.delete("/:id", controller.deleteSauce)
-router.post("/:id/like", controller.likeSauce)
+router.put("/:id", authMiddleware, multerMiddleware, controller.updateSauce)
+router.delete("/:id", authMiddleware, controller.deleteSauce)
+router.post("/:id/like", authMiddleware, controller.likeSauce)
 
 
 module.exports = router

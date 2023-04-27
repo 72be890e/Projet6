@@ -8,5 +8,7 @@ const corsMiddleware = (req, res, next) => {
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, PATCH, OPTIONS"
     );
-    next();
+    next()
 }
+
+module.exports = corsMiddleware
